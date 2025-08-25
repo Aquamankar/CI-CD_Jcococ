@@ -162,3 +162,154 @@ Add Prometheus as Grafana datasource → create dashboards
  prometheus.yml exists on EC2-2 for scraping student-app metrics
 
 ✅ This pipeline covers everything: CI/CD + Docker deployment + RDS + JaCoCo + monitoring.
+
+
+----------------------------------------------------------------------------------------------------------------------------------------------------------
+1️⃣ EC2-1 (App + Jenkins) Setup
+
+Step 1: Launch EC2 Instance
+
+Use Amazon Linux 2 AMI (t2.medium or t2.large recommended)
+
+Security group:
+
+SSH (22) from your IP
+
+HTTP (8080) for app access
+
+Outbound access for Docker Hub (if pushing/pulling)
+
+Step 2: Update and Install Docker
+
+sudo yum update -y
+sudo amazon-linux-extras install docker -y
+sudo service docker start
+sudo usermod -a -G docker ec2-user
+
+
+Log out and log back in so docker permissions apply.
+
+Step 3: Install Java (for Jenkins / Maven)
+
+sudo amazon-linux-extras install java-openjdk11 -y
+
+
+Step 4: Install Jenkins
+
+sudo wget -O /etc/yum.repos.d/jenkins.repo https://pkg.jenkins.io/redhat-stable/jenkins.repo
+sudo rpm --import https://pkg.jenkins.io/redhat-stable/jenkins.io.key
+sudo yum install jenkins -y
+sudo systemctl start jenkins
+sudo systemctl enable jenkins
+sudo systemctl status jenkins
+
+
+Open port 8080 if Jenkins UI is required (or use different port if app also uses 8080)
+
+Step 5: Install Maven
+
+sudo yum install maven -y
+mvn -version
+
+2️⃣ EC2-2 (Monitoring: Prometheus + Grafana) Setup
+
+Step 1: Launch EC2 Instance
+
+Amazon Linux 2 AMI
+
+Security group:
+
+SSH (22)
+
+HTTP 9090 (Prometheus), 3000 (Grafana)
+
+HTTP 8080 (if app container is also here, optional)
+
+Step 2: Install Docker
+
+sudo yum update -y
+sudo amazon-linux-extras install docker -y
+sudo service docker start
+sudo usermod -a -G docker ec2-user
+
+
+Step 3: Install Docker Compose (optional, recommended for easier multi-container setup)
+
+sudo curl -L "https://github.com/docker/compose/releases/download/v2.20.2/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
+sudo chmod +x /usr/local/bin/docker-compose
+docker-compose --version
+
+3️⃣ RDS MySQL Setup
+
+AWS → RDS → Create database → MySQL 8.0
+
+DB name: studentdb, username: studentuser, password: studentpass
+
+Security group: allow EC2-1 access on port 3306
+
+Note endpoint → e.g., studentdb.c123abcxyz.us-east-1.rds.amazonaws.com
+
+Important: RDS must exist before deploying student app, because the app container will need DB connection.
+
+4️⃣ Deploy Flow with Two EC2s + RDS
+
+Step 1: Jenkins builds Docker image on EC2-1
+Step 2: Jenkins pushes image to Docker Hub (or ECR)
+Step 3: EC2-1 pulls image and runs student-app container
+
+docker pull yourdockerhubusername/student-app:latest
+docker stop student-app || true
+docker rm student-app || true
+docker run -d -p 8080:8080 --name student-app \
+    -e DB_URL=jdbc:mysql://<RDS_ENDPOINT>:3306/studentdb \
+    -e DB_USER=studentuser \
+    -e DB_PASS=studentpass \
+    yourdockerhubusername/student-app:latest
+
+
+Step 4: EC2-2 runs Prometheus + Grafana containers
+
+docker stop prometheus grafana || true
+docker rm prometheus grafana || true
+
+docker run -d --name prometheus -p 9090:9090 \
+    -v /home/ec2-user/prometheus.yml:/etc/prometheus/prometheus.yml prom/prometheus:latest
+
+docker run -d --name grafana -p 3000:3000 grafana/grafana:latest
+
+
+Step 5: Configure Grafana
+
+Open http://<EC2-2-IP>:3000
+
+Login: admin/admin
+
+Add Prometheus as datasource: http://<EC2-2-IP>:9090
+
+Create dashboards monitoring student app metrics
+
+5️⃣ How to Check Everything
+Component	URL / Command
+Student app	http://<EC2-1-IP>:8080/actuator/health
+Prometheus	http://<EC2-2-IP>:9090/targets (student-app target UP)
+Grafana	http://<EC2-2-IP>:3000 (dashboards)
+RDS	mysql -h <RDS_ENDPOINT> -u studentuser -p from EC2-1
+6️⃣ Summary
+
+EC2-1 → Jenkins + Docker + Student App
+
+EC2-2 → Docker + Docker Compose + Prometheus + Grafana
+
+RDS MySQL → Managed DB accessed by student app
+
+Jenkins handles CI/CD → builds, tests, JaCoCo, Docker image → deploys to EC2-1
+
+Prometheus scrapes metrics → Grafana visualizes
+
+
+
+
+
+
+
+
