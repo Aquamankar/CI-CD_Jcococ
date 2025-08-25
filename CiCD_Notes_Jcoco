@@ -1,0 +1,164 @@
+Maven build + tests + JaCoCo coverage
+
+Docker image build
+
+Push Docker image to Docker Hub (or optional ECR)
+
+Deploy student app container on EC2-1 with RDS env variables
+
+Deploy Prometheus + Grafana containers on EC2-2
+
+1️⃣ Prerequisites
+EC2-1 (App + Jenkins)
+
+Docker installed
+
+Jenkins installed
+
+Security group allows ports 8080 (app) and SSH (22)
+
+Jenkins user can run Docker commands
+
+EC2-2 (Monitoring)
+
+Docker + Docker Compose installed
+
+Security group allows ports 9090 (Prometheus) and 3000 (Grafana)
+
+RDS MySQL
+
+Created and accessible from EC2-1
+
+DB credentials: DB_URL, DB_USER, DB_PASS
+
+2️⃣ Jenkinsfile
+pipeline {
+    agent any
+
+    environment {
+        // EC2 details
+        EC2_APP_USER = 'ec2-user'
+        EC2_APP_IP = '<EC2_1_PUBLIC_IP>'
+        EC2_MONITOR_USER = 'ec2-user'
+        EC2_MONITOR_IP = '<EC2_2_PUBLIC_IP>'
+        PEM_FILE = '/path/to/key.pem'
+
+        // Docker image
+        IMAGE_NAME = 'yourdockerhubusername/student-app:latest'
+
+        // RDS env variables
+        DB_URL = 'jdbc:mysql://<RDS_ENDPOINT>:3306/studentdb'
+        DB_USER = 'studentuser'
+        DB_PASS = 'studentpass'
+    }
+
+    tools {
+        maven 'maven'
+    }
+
+    stages {
+        stage('Git Checkout') {
+            steps {
+                git branch: 'main', url: 'https://github.com/Aquamankar/dockerdemo.git'
+            }
+        }
+
+        stage('Maven Build & Test') {
+            steps {
+                sh 'mvn clean test package'
+            }
+        }
+
+        stage('JaCoCo Coverage') {
+            steps {
+                // Optional: archive coverage report
+                archiveArtifacts artifacts: 'target/site/jacoco/**', fingerprint: true
+            }
+        }
+
+        stage('Build Docker Image') {
+            steps {
+                sh "docker build -t ${IMAGE_NAME} ."
+            }
+        }
+
+        stage('Push Docker Image') {
+            steps {
+                // Make sure Jenkins has Docker Hub credentials
+                withCredentials([usernamePassword(credentialsId: 'dockerhub-credentials', usernameVariable: 'USER', passwordVariable: 'PASS')]) {
+                    sh "echo $PASS | docker login -u $USER --password-stdin"
+                    sh "docker push ${IMAGE_NAME}"
+                }
+            }
+        }
+
+        stage('Deploy App on EC2-1') {
+            steps {
+                sh """
+                ssh -o StrictHostKeyChecking=no -i ${PEM_FILE} ${EC2_APP_USER}@${EC2_APP_IP} '
+                    docker pull ${IMAGE_NAME}
+                    docker stop student-app || true
+                    docker rm student-app || true
+                    docker run -d -p 8080:8080 --name student-app \\
+                        -e DB_URL=${DB_URL} -e DB_USER=${DB_USER} -e DB_PASS=${DB_PASS} \\
+                        ${IMAGE_NAME}
+                '
+                """
+            }
+        }
+
+        stage('Deploy Monitoring on EC2-2') {
+            steps {
+                sh """
+                ssh -o StrictHostKeyChecking=no -i ${PEM_FILE} ${EC2_MONITOR_USER}@${EC2_MONITOR_IP} '
+                    docker stop prometheus grafana || true
+                    docker rm prometheus grafana || true
+                    docker run -d --name prometheus -p 9090:9090 -v /home/ec2-user/prometheus.yml:/etc/prometheus/prometheus.yml prom/prometheus:latest
+                    docker run -d --name grafana -p 3000:3000 grafana/grafana:latest
+                '
+                """
+            }
+        }
+    }
+
+    post {
+        success {
+            echo '✅ Full deployment successful!'
+        }
+        failure {
+            echo '❌ Deployment failed.'
+        }
+    }
+}
+
+3️⃣ Notes / How It Works
+
+Jenkins builds Maven project, runs tests, and archives JaCoCo coverage.
+
+Docker image is built and pushed to Docker Hub.
+
+EC2-1 pulls the image and runs the container with RDS environment variables.
+
+EC2-2 runs Prometheus (scraping student-app) and Grafana (dashboard).
+
+Monitoring:
+
+Prometheus URL: http://<EC2-2-IP>:9090
+
+Grafana URL: http://<EC2-2-IP>:3000
+
+Add Prometheus as Grafana datasource → create dashboards
+
+4️⃣ Checklist Before Running
+
+ RDS MySQL is running and security group allows EC2-1 to access port 3306
+
+ EC2-1 and EC2-2 have Docker installed
+
+ Jenkins can SSH to EC2 instances using PEM key
+
+ Docker Hub credentials added to Jenkins (dockerhub-credentials)
+
+ prometheus.yml exists on EC2-2 for scraping student-app metrics
+
+✅ This pipeline covers everything: CI/CD + Docker deployment + RDS + JaCoCo + monitoring.
