@@ -1,0 +1,31 @@
+SonarQube + JaCoCo Guide
+1. SonarQube Basics
+• What is SonarQube and why it’s used (code quality, technical debt, CI/CD integration).
+• SonarLint (IDE plugin) vs SonarQube (server).
+• Key Concepts: Rules, Quality Profiles, Quality Gates, Measures & Metrics.
+2. SonarQube Setup & Configuration
+• Installing & running SonarQube (local with Docker or zip).
+• SonarQube server vs database.
+• SonarScanner and sonar-project.properties.
+• Authentication tokens (instead of passwords).
+3. SonarQube with Build Tools
+• Maven integration (mvn sonar:sonar).
+• Gradle integration (./gradlew sonarqube).
+• npm/JavaScript projects integration.
+4. SonarQube in CI/CD
+• Jenkins pipeline integration.
+• GitHub Actions / GitLab CI / Azure DevOps integration.
+• SonarCloud vs self-hosted SonarQube.
+5. Advanced SonarQube Features
+• Custom Quality Profiles (enable/disable specific rules).
+• Quality Gates (enforce rules in CI/CD).
+• Coverage reports (JaCoCo for Java, Istanbul for JS).
+• Security Hotspots (OWASP, SAST).
+• Pull Request decoration.
+6. JaCoCo Basics
+• What is code coverage and why it matters.
+• Types of coverage: Line, Branch, Instruction, Method, Class.
+7. JaCoCo Setup & Integration
+• Maven configuration for JaCoCo.
+• Gradle configuration for JaCoCo.
+• Generating HTML, XML, CSV reports.
